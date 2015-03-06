@@ -1,4 +1,4 @@
-This is a demo of adding features to browserify to allow it to recognize its own bundles and consume them more easily.
+This is a demo of adding features to browserify to allow it to recognize its own bundles and consume them more easily. See [substack/node-browserify#1151]( https://github.com/substack/node-browserify/pull/1151).
 
 To run the demo:
 
