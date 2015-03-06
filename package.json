@@ -1,0 +1,10 @@
+{
+  "private": true,
+  "name": "browserify-pragma-demo",
+  "version": "0.1.0",
+  "dependencies": {
+    "browserify": "9.0.3",
+    "browserify-pragma": "jmm/browserify-pragma#demo",
+    "del": "1.x"
+  }
+}

@@ -1,0 +1,133 @@
+From a21367cdf04846bd461834d20face0e4f7bb2646 Mon Sep 17 00:00:00 2001
+From: Jesse McCarthy <git_commits@jessemccarthy.net>
+Date: Thu, 5 Mar 2015 13:23:34 -0500
+Subject: [PATCH] Pragma.
+
+---
+ index.js                           |    9 +++++++--
+ node_modules/browser-pack/index.js |   13 +++++++++---
+ node_modules/module-deps/index.js  |   38 ++++++++++++++++++++++++++----------
+ 3 files changed, 45 insertions(+), 15 deletions(-)
+
+diff --git a/index.js b/index.js
+index c4cc34a..ee0d5ec 100644
+--- a/index.js
++++ b/index.js
+@@ -22,6 +22,8 @@ var has = require('has');
+ var bresolve = require('browser-resolve');
+ var resolve = require('resolve');
+ 
++var bPragma = require('browserify-pragma');
++
+ module.exports = Browserify;
+ inherits(Browserify, EventEmitter);
+ 
+@@ -369,8 +371,11 @@ Browserify.prototype._createPipeline = function (opts) {
+         dedupe: true,
+         expose: this._expose
+     };
+-    this._bpack = bpack(xtend(opts, { raw: true }));
+-    
++    this._bpack = bpack(xtend(opts, {
++      raw: true,
++      pragma: bPragma.generate(require('./package.json')) + '\n',
++    }));
++
+     var pipeline = splicer.obj([
+         'record', [ this._recorder() ],
+         'deps', [ this._mdeps ],
+diff --git a/node_modules/browser-pack/index.js b/node_modules/browser-pack/index.js
+index 1814347..81c1d70 100644
+--- a/node_modules/browser-pack/index.js
++++ b/node_modules/browser-pack/index.js
+@@ -35,13 +35,20 @@ module.exports = function (opts) {
+     var prelude = opts.prelude || defaultPrelude;
+     var preludePath = opts.preludePath ||
+         path.relative(basedir, defaultPreludePath).replace(/\\/g, '/');
+-    
+-    var lineno = 1 + newlinesIn(prelude);
++
++    var pragma = opts.pragma;
++
++    var preludeLineno = (pragma && newlinesIn(pragma)) || 0;
++    var lineno = preludeLineno + newlinesIn(prelude) + 1;
+     var sourcemap;
+     
+     return stream;
+     
+     function write (row, enc, next) {
++        if (first && pragma) {
++            stream.push(Buffer(pragma));
++        }
++
+         if (first && opts.standalone) {
+             var pre = umd.prelude(opts.standalone).trim();
+             stream.push(Buffer(pre + 'return '));
+@@ -57,7 +64,7 @@ module.exports = function (opts) {
+                 sourcemap = combineSourceMap.create();
+                 sourcemap.addFile(
+                     { sourceFile: preludePath, source: prelude },
+-                    { line: 0 }
++                    { line: preludeLineno }
+                 );
+             }
+             sourcemap.addFile(
+diff --git a/node_modules/module-deps/index.js b/node_modules/module-deps/index.js
+index baa744b..78f1e7b 100644
+--- a/node_modules/module-deps/index.js
++++ b/node_modules/module-deps/index.js
+@@ -15,6 +15,8 @@ var xtend = require('xtend');
+ var inherits = require('inherits');
+ var Transform = require('readable-stream').Transform;
+ 
++var bPragma = require('browserify-pragma');
++
+ module.exports = Deps;
+ inherits(Deps, Transform);
+ 
+@@ -347,16 +349,32 @@ Deps.prototype.walk = function (id, parent, cb) {
+         
+         var c = self.cache && self.cache[file];
+         if (c) return fromDeps(file, c.source, c.package, Object.keys(c.deps));
+-        
+-        self.readFile(file, id, pkg)
+-            .pipe(self.getTransforms(file, pkg, {
+-                builtin: has(parent.modules, id)
+-            }))
+-            .pipe(concat(function (body) {
+-                fromSource(body.toString('utf8'));
+-            }))
+-        ;
+-        
++
++        /**
++         * Pipe source to appropriate streams depending on pragma detection.
++         */
++        function pipeSource (pragma) {
++            if (pragma.present) rec.noparse = pragma.present;
++            // Omit transforms if pragma is present.
++            else {
++                source = source
++                    .pipe(self.getTransforms(file, pkg, {
++                        builtin: has(parent.modules, id)
++                    }));
++            }
++
++            source
++                .pipe(concat(function (body) {
++                    fromSource(body.toString('utf8'));
++                }));
++        }
++        // pipeSource
++
++        // Pipe source to a pragma detector stream.
++        var source = self.readFile(file, id, pkg).pipe(bPragma({
++            done: pipeSource,
++        }).detector());
++
+         function fromSource (src) {
+             var deps = rec.noparse ? [] : self.parseDeps(file, src);
+             if (deps) fromDeps(file, src, pkg, deps);
+-- 
+1.7.9.5
+
